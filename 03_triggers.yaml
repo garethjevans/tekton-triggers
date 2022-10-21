@@ -1,0 +1,90 @@
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: tekton-greeter-trigger-template
+  namespace: trigger-namespace
+spec:
+  params:
+    - name: gitrevision
+      description: The git revision
+      default: staging
+    - name: gitrepositoryurl
+      description: The git repository url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: greeter-app-
+        labels:
+          tekton.dev/pipeline: greeter-app-deploy
+        namespace: trigger-namespace
+      spec:
+        serviceAccountName: pipeline
+        pipelineRef:
+          name: greeter-app-deploy
+        params:
+          - name: github-repo-url
+            value: '$(tt.params.gitrepositoryurl)'
+          - name: github-repo-revision
+            value: '$(tt.params.gitrevision)'
+          - name: context-dir
+            # must be either 'quarkus' or 'springboot'
+            value: quarkus
+          - name: image-name
+            # For OpenShift builds, this should be patched to point to a suitable image stream for the project
+            value: example.com/tekton-tutorial/greeter
+        workspaces:
+          - name: maven-settings
+            configmap:
+              name: maven-settings
+          - name: source
+            persistentVolumeClaim:
+              claimName: tekton-tutorial-sources
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: triggerbinding
+  namespace: trigger-namespace
+spec:
+  params:
+    - name: gitrevision
+      value: $(body.after)
+    - name: gitrepositoryurl
+      value: $(body.repository.clone_url)
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: webhook
+  namespace: trigger-namespace
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: tekton-greeter-webhook
+      bindings:
+        - ref: triggerbinding
+      template:
+        ref: tekton-greeter-trigger-template
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webhook
+  namespace: trigger-namespace
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: el-webhook
+            port:
+              number: 8080
+---

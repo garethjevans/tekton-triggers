@@ -29,6 +29,12 @@ jobs:
           node_image: ${{ matrix.kubernetes_version }}
           wait: 300s
 
+      - name: Prereqs
+        run: |
+
       - name: Install
         run: |
           ./install.sh
+          kubectl apply -f 01_namespace.yaml
+          kubectl apply -f 02_rbac.yaml
+          kubectl apply -f 03_triggers.yaml
