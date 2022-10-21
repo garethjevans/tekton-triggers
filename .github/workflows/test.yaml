@@ -35,3 +35,7 @@ jobs:
           kubectl apply -f 01_namespace.yaml
           kubectl apply -f 02_rbac.yaml
           kubectl apply -f 03_triggers.yaml
+
+      - name: Test
+        run: |
+          ./04_send_test.sh
