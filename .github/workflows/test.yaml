@@ -34,7 +34,7 @@ jobs:
           ./install.sh
           kubectl apply -f 01_namespace.yaml
           kubectl apply -f 02_rbac.yaml
-          kubectl apply -f 03_triggers.yaml
+          kubectl apply -f 03_triggers.yaml --wait
 
       - name: Test
         run: |
