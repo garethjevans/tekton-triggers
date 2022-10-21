@@ -1,58 +1,103 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: source-tester
+spec:
+  description: >-
+    The Pipeline to test maven source
+  params:
+    - default: 'https://github.com/redhat-scholars/tekton-tutorial-greeter'
+      description: The Repo of the Java Application
+      name: repo-url
+      type: string
+    - default: main
+      description: The ref to use
+      name: repo-ref
+      type: string
+  tasks:
+    - name: clone-sources
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.repo-ref)
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: source
+    - name: build-java-test
+      params:
+        - name: GOALS
+          value:
+            - '-B'
+            - '--no-transfer-progress'
+            - clean
+            - test
+      runAfter:
+        - clone-sources
+      taskRef:
+        kind: Task
+        name: maven
+      workspaces:
+        - name: maven-settings
+          workspace: maven-settings
+        - name: source
+          workspace: source
+  workspaces:
+    - name: source
+    - name: maven-settings
 ---
 apiVersion: triggers.tekton.dev/v1alpha1
 kind: TriggerTemplate
 metadata:
-  name: tekton-greeter-trigger-template
+  name: source-tester-trigger-template
   namespace: trigger-namespace
 spec:
   params:
-    - name: gitrevision
+    - name: revision
       description: The git revision
-      default: staging
-    - name: gitrepositoryurl
+    - name: url
       description: The git repository url
   resourcetemplates:
     - apiVersion: tekton.dev/v1beta1
       kind: PipelineRun
       metadata:
-        generateName: greeter-app-
+        generateName: source-tester-pr-
         labels:
-          tekton.dev/pipeline: greeter-app-deploy
+          tekton.dev/pipeline: source-tester
         namespace: trigger-namespace
       spec:
         serviceAccountName: pipeline
         pipelineRef:
-          name: greeter-app-deploy
+          name: source-tester
         params:
-          - name: github-repo-url
-            value: '$(tt.params.gitrepositoryurl)'
-          - name: github-repo-revision
-            value: '$(tt.params.gitrevision)'
-          - name: context-dir
-            # must be either 'quarkus' or 'springboot'
-            value: quarkus
-          - name: image-name
-            # For OpenShift builds, this should be patched to point to a suitable image stream for the project
-            value: example.com/tekton-tutorial/greeter
+          - name: repo-url
+            value: '$(tt.params.url)'
+          - name: repo-ref
+            value: '$(tt.params.revision)'
         workspaces:
           - name: maven-settings
             configmap:
               name: maven-settings
           - name: source
             persistentVolumeClaim:
-              claimName: tekton-tutorial-sources
+              claimName: maven-cache
 ---
 apiVersion: triggers.tekton.dev/v1alpha1
 kind: TriggerBinding
 metadata:
-  name: triggerbinding
+  name: source-trigger-binding
   namespace: trigger-namespace
 spec:
   params:
-    - name: gitrevision
-      value: $(body.after)
-    - name: gitrepositoryurl
-      value: $(body.repository.clone_url)
+    - name: revision
+      value: $(body.subject.content.revision)
+    - name: url
+      value: $(body.subject.content.url)
 ---
 apiVersion: triggers.tekton.dev/v1alpha1
 kind: EventListener
@@ -62,11 +107,11 @@ metadata:
 spec:
   serviceAccountName: pipeline
   triggers:
-    - name: tekton-greeter-webhook
+    - name: source-tester-trigger
       bindings:
-        - ref: triggerbinding
+        - ref: source-trigger-binding
       template:
-        ref: tekton-greeter-trigger-template
+        ref: source-tester-trigger-template
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -87,4 +132,35 @@ spec:
             name: el-webhook
             port:
               number: 8080
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maven-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maven-settings
+  namespace: trigger-namespace
+data:
+  settings.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <settings>
+      <mirrors>
+        <mirror>
+          <id>maven.org</id>
+          <name>Default mirror</name>
+          <url>http://repo1.maven.org/maven2</url>
+          <mirrorOf>central</mirrorOf>
+        </mirror>
+      </mirrors>
+    </settings>
 ---
