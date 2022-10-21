@@ -3,10 +3,9 @@ kind: Pipeline
 metadata:
   name: source-tester
 spec:
-  description: >-
-    The Pipeline to test maven source
+  description: The Pipeline to test maven source
   params:
-    - default: 'https://github.com/redhat-scholars/tekton-tutorial-greeter'
+    - default: ''
       description: The Repo of the Java Application
       name: repo-url
       type: string
@@ -143,7 +142,7 @@ spec:
   volumeMode: Filesystem
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: ConfigMap
