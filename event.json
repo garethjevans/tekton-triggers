@@ -1,0 +1,19 @@
+{
+   "context": {
+      "version" : "0.1.0-draft",
+      "id" : "A234-1234-1234",
+      "source" : "/staging/tekton/",
+      "type" : "dev.cdevents.repository.changed",
+      "timestamp" : "2018-04-05T17:31:00Z"
+   },
+   "subject" : {
+      "id": "my-taskrun-123",
+      "type": "taskRun",
+      "content": {
+         "url": "https://github.com/garethjevans/gevans-petclinic",
+         "revision": "89df146cb51a970071cec8ccd729d82c4e8a169a",
+         "commit_message": "Bump bootstrap from 5.2.1 to 5.2.2",
+	 "branch": "main"
+      }
+   }
+}

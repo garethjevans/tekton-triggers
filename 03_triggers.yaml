@@ -1,0 +1,158 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: source-tester
+spec:
+  description: The Pipeline to test maven source
+  params:
+    - default: ''
+      description: The Repo of the Java Application
+      name: repo-url
+      type: string
+    - default: main
+      description: The ref to use
+      name: repo-ref
+      type: string
+  tasks:
+    - name: clone-sources
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.repo-ref)
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: source
+    - name: build-java-test
+      params:
+        - name: GOALS
+          value:
+            - '-B'
+            - '--no-transfer-progress'
+            - clean
+            - test
+      runAfter:
+        - clone-sources
+      taskRef:
+        kind: Task
+        name: maven
+      workspaces:
+        - name: maven-settings
+          workspace: maven-settings
+        - name: source
+          workspace: source
+  workspaces:
+    - name: source
+    - name: maven-settings
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: source-tester-trigger-template
+  namespace: trigger-namespace
+spec:
+  params:
+    - name: revision
+      description: The git revision
+    - name: url
+      description: The git repository url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: source-tester-pr-
+        labels:
+          tekton.dev/pipeline: source-tester
+        namespace: trigger-namespace
+      spec:
+        serviceAccountName: pipeline
+        pipelineRef:
+          name: source-tester
+        params:
+          - name: repo-url
+            value: '$(tt.params.url)'
+          - name: repo-ref
+            value: '$(tt.params.revision)'
+        workspaces:
+          - name: maven-settings
+            configmap:
+              name: maven-settings
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 5Gi
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerBinding
+metadata:
+  name: source-trigger-binding
+  namespace: trigger-namespace
+spec:
+  params:
+    - name: revision
+      value: $(body.subject.content.revision)
+    - name: url
+      value: $(body.subject.content.url)
+---
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: webhook
+  namespace: trigger-namespace
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - name: source-tester-trigger
+      bindings:
+        - ref: source-trigger-binding
+      template:
+        ref: source-tester-trigger-template
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webhook
+  namespace: trigger-namespace
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: el-webhook
+            port:
+              number: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maven-settings
+  namespace: trigger-namespace
+data:
+  settings.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <settings>
+      <mirrors>
+        <mirror>
+          <id>maven.org</id>
+          <name>Default mirror</name>
+          <url>http://repo1.maven.org/maven2</url>
+          <mirrorOf>central</mirrorOf>
+        </mirror>
+      </mirrors>
+    </settings>
+---
