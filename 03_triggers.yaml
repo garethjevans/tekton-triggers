@@ -83,8 +83,13 @@ spec:
             configmap:
               name: maven-settings
           - name: source
-            persistentVolumeClaim:
-              claimName: maven-cache
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 5Gi
 ---
 apiVersion: triggers.tekton.dev/v1alpha1
 kind: TriggerBinding
@@ -131,18 +136,6 @@ spec:
             name: el-webhook
             port:
               number: 8080
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: maven-cache
-spec:
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Filesystem
-  resources:
-    requests:
-      storage: 5Gi
 ---
 apiVersion: v1
 kind: ConfigMap
