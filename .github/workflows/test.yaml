@@ -1,0 +1,47 @@
+---
+name: Testing
+on:
+  pull_request:
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        kubernetes_version:
+          # only 3 supported versions
+          #- "kindest/node:v1.25.2"
+          #- "kindest/node:v1.24.6"
+          - "kindest/node:v1.23.12"
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Kubectl
+        uses: azure/setup-kubectl@v1
+
+      - name: Install yq
+        uses: chrisdickinson/setup-yq@latest
+        with:
+          yq-version: v4.28.2
+
+      - name: Create Kind Cluster
+        uses: helm/kind-action@v1.4.0
+        with:
+          node_image: ${{ matrix.kubernetes_version }}
+          wait: 300s
+
+      - name: Install
+        run: |
+          ./install.sh
+          kubectl apply -f 01_namespace.yaml
+          kubectl apply -f 02_rbac.yaml
+          kubectl apply -f 03_triggers.yaml --wait
+          sleep 60
+
+      - name: Test
+        run: |
+          ./04_send_test.sh
